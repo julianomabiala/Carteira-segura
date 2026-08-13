@@ -72,3 +72,4 @@ Privacidade e segurança técnica
 
 Dificuldades 
 -Estou com dificuldades de encontrar uma Wallet de alto risco.# Carteira-segura
+# Carteira-segura
