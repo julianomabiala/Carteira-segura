@@ -1,0 +1,19 @@
+{
+  "name": "carteira-segura",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Aplicacao web para analise de risco de carteiras blockchain com NZOChain.",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace backend\" \"npm run dev --workspace frontend\"",
+    "build": "npm run build --workspace backend && npm run build --workspace frontend",
+    "test": "npm run test --workspace backend && npm run test --workspace frontend",
+    "check": "npm run check --workspace backend && npm run check --workspace frontend"
+  },
+  "devDependencies": {
+    "concurrently": "8.2.2"
+  }
+}
