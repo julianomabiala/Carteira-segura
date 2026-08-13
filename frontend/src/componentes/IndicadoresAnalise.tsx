@@ -1,17 +1,18 @@
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
-import type { Razao } from "../tipos/analise";
+import type { NivelRisco, Razao } from "../tipos/analise";
 
 type Propriedades = {
   razoes: Razao[];
-  nivelRisco: "segura" | "risco";
+  nivelRisco: NivelRisco;
 };
 
 export function IndicadoresAnalise({ razoes, nivelRisco }: Propriedades) {
   if (razoes.length === 0) return null;
 
-  const icone = nivelRisco === "segura" ? CheckCircle2 : AlertTriangle;
-  const cor = nivelRisco === "segura" ? "text-green-600" : "text-amber-600";
-  const fundo = nivelRisco === "segura" ? "bg-green-50 border-green-100" : "bg-amber-50 border-amber-100";
+  const seguro = nivelRisco === "baixo";
+  const icone = seguro ? CheckCircle2 : AlertTriangle;
+  const cor = seguro ? "text-green-600" : "text-amber-600";
+  const fundo = seguro ? "bg-green-50 border-green-100" : "bg-amber-50 border-amber-100";
   const Icone = icone;
 
   return (
