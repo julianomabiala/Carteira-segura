@@ -70,20 +70,38 @@ export function classificarRisco(dados: unknown): ClassificacaoRisco {
     });
   }
 
-  if (riskScore !== null && riskScore > 50) {
-    nivel = "alto";
-    razoes.push({
-      titulo: "Sinais preocupantes na atividade",
-      descricao: "A atividade observada nesta carteira sugere comportamentos atípicos que recomendam precaução."
-    });
+  if (riskScore !== null) {
+    if (riskScore >= 60) {
+      nivel = "alto";
+      razoes.push({
+        titulo: "Sinais preocupantes na atividade",
+        descricao: "A atividade observada nesta carteira sugere comportamentos atípicos que recomendam precaução."
+      });
+    } else if (riskScore >= 30) {
+      nivel = "atencao";
+      razoes.push({
+        titulo: "Indicadores moderados de risco",
+        descricao: "Os dados apontam para sinais que merecem atenção e validação adicional."
+      });
+    }
   }
 
-  if (alertas.length > 0 && riskScore !== null && riskScore > 30) {
-    nivel = "alto";
+  if (alertas.length > 0 && riskScore !== null && riskScore >= 30 && riskScore < 60) {
+    nivel = "atencao";
     razoes.push({
       titulo: "Foram encontrados sinais de alerta",
       descricao: "Foram detectadas atividades atípicas. Exemplos: " + alertas.slice(0, 2).join(", ") + (alertas.length > 2 ? ", e mais..." : "")
     });
+  }
+
+  if (status.includes("medium") || status.includes("moderate") || status.includes("warning") || status.includes("attention")) {
+    nivel = "atencao";
+    if (!razoes.some((r) => r.titulo.includes("atenção") || r.titulo.includes("risco") || r.titulo.includes("alerta"))) {
+      razoes.push({
+        titulo: "Análise externa indica atenção",
+        descricao: "Classificações externas sugerem que esta carteira merece verificação adicional."
+      });
+    }
   }
 
   if (status.includes("high") || status.includes("critical") || status.includes("unsafe")) {
@@ -104,16 +122,20 @@ export function classificarRisco(dados: unknown): ClassificacaoRisco {
     });
   }
 
-    const mensagens = {
-      baixo: {
-        titulo: "Baixo risco",
-        explicacao: "Esta carteira aparenta não apresentar sinais de perigo.",
-      },
-      alto: {
-        titulo: "Alto risco",
-        explicacao: "Foram encontrados sinais que sugerem risco. Evite interagir sem verificação adicional."
-      }
-    };
+  const mensagens = {
+    baixo: {
+      titulo: "Baixo risco",
+      explicacao: "Esta carteira aparenta não apresentar sinais de perigo."
+    },
+    atencao: {
+      titulo: "Atenção",
+      explicacao: "Foram identificados sinais moderados que merecem verificação adicional antes de interagir."
+    },
+    alto: {
+      titulo: "Alto risco",
+      explicacao: "Foram encontrados sinais que sugerem risco. Evite interagir sem verificação adicional."
+    }
+  };
 
   return {
     nivel,

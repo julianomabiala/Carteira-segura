@@ -15,6 +15,11 @@ describe("classificacao de risco", () => {
     expect(classificarRisco({ risk_score: 10 }).nivel).toBe("baixo");
   });
 
+  it("classifica como atencao quando o score é moderado", () => {
+    expect(classificarRisco({ risk_score: 35 }).nivel).toBe("atencao");
+    expect(classificarRisco({ risk_score: 45 }).nivel).toBe("atencao");
+  });
+
   it("classifica como risco quando o score é elevado", () => {
     expect(classificarRisco({ risk_score: 60 }).nivel).toBe("alto");
     expect(classificarRisco({ risk_score: 80 }).nivel).toBe("alto");

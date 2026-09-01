@@ -1,0 +1,19 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users root: only owner can read/write their document
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      // wallets subcollection: only owner
+      match /wallets/{walletId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+
+        // analyses subcollection: only owner
+        match /analyses/{analysisId} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+        }
+      }
+    }
+  }
+}

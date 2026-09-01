@@ -1,6 +1,6 @@
 export type RedeSuportada = "ethereum" | "bnb" | "polygon" | "arbitrum";
 
-export type NivelRisco = "baixo" | "alto";
+export type NivelRisco = "baixo" | "atencao" | "alto";
 
 export type Razao = {
   titulo: string;

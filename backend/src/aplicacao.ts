@@ -2,6 +2,7 @@ import cors from "cors";
 import express from "express";
 import helmet from "helmet";
 import { rotasAnalise } from "./rotas/rotasAnalise.js";
+import { rotasAuth } from "./rotas/rotasAuth.js";
 
 export function criarApp() {
   const app = express();
@@ -17,6 +18,8 @@ export function criarApp() {
   app.get("/api/health", (_req, res) => {
     res.json({ estado: "ok" });
   });
+
+  app.use("/api", rotasAuth);
 
   app.use("/api", rotasAnalise);
 

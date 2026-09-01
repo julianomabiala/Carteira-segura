@@ -14,6 +14,10 @@
     "check": "npm run check --workspace backend && npm run check --workspace frontend"
   },
   "devDependencies": {
-    "concurrently": "8.2.2"
+    "concurrently": "8.2.2",
+    "typescript": "5.9.3"
+  },
+  "dependencies": {
+    "@base-org/account": "^2.5.10"
   }
 }

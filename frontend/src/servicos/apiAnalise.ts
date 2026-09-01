@@ -1,16 +1,21 @@
 import type { PedidoAnalise, ResultadoAnalise } from "../tipos/analise";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "";
+const API_URL = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
+const URL_SCAN = API_URL ? `${API_URL}/api/scan` : "/api/scan";
 
 export async function pedirAnalise(
-  pedido: PedidoAnalise
+  pedido: PedidoAnalise,
+  idToken?: string
 ): Promise<ResultadoAnalise> {
   let resposta: Response;
 
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+
   try {
-    resposta = await fetch(`${API_URL}/api/scan`, {
+    resposta = await fetch(URL_SCAN, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(pedido)
     });
   } catch {
