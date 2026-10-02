@@ -66,3 +66,51 @@ export async function fecharBanco(): Promise<void> {
   await pool.end();
   pool = null;
 }
+
+
+export async function inicializarBanco(): Promise<void> {
+  const cliente = await obterPool().connect();
+
+  try {
+    await cliente.query(`
+      CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+      CREATE TABLE IF NOT EXISTS wallets (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        address TEXT NOT NULL,
+        network TEXT NOT NULL DEFAULT 'evm',
+        first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (address, network)
+      );
+
+      CREATE TABLE IF NOT EXISTS nonces (
+        nonce TEXT PRIMARY KEY,
+        wallet_address TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        expires_at TIMESTAMPTZ NOT NULL,
+        used_at TIMESTAMPTZ
+      );
+
+      CREATE TABLE IF NOT EXISTS sessions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        token_hash TEXT NOT NULL UNIQUE,
+        wallet_id UUID NOT NULL REFERENCES wallets(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        expires_at TIMESTAMPTZ NOT NULL,
+        revoked_at TIMESTAMPTZ
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_nonces_expires_at
+        ON nonces (expires_at);
+
+      CREATE INDEX IF NOT EXISTS idx_sessions_token_hash
+        ON sessions (token_hash);
+
+      CREATE INDEX IF NOT EXISTS idx_sessions_wallet_id
+        ON sessions (wallet_id);
+    `);
+  } finally {
+    cliente.release();
+  }
+}
