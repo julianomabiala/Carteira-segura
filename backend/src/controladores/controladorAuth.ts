@@ -48,7 +48,7 @@ function opcoesCookie() {
   return {
     httpOnly: true,
     secure: producao,
-    sameSite: "lax" as const,
+    sameSite: producao ? ("none" as const) : ("lax" as const),
     maxAge: SESSION_TTL_MS,
     path: "/"
   };
