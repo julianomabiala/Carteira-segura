@@ -1,92 +1,295 @@
 import type { Request, Response } from "express";
-import crypto from "crypto";
+import crypto from "node:crypto";
 import { ethers } from "ethers";
-import admin from "firebase-admin";
+import {
+  apagarNonce,
+  consumirNonce,
+  criarSessao,
+  gerarHashToken,
+  limparNoncesExpirados,
+  limparSessoesExpiradas,
+  obterOuCriarWallet,
+  obterSessaoPorToken,
+  revogarSessao,
+  guardarNonce
+} from "../repositorios/repositorioAuth.js";
 
-const nonces = new Map<string, number>();
+const COOKIE_NAME = "carteira_segura_session";
 const NONCE_TTL_MS = 5 * 60 * 1000;
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-function gerarNonce() {
-  return crypto.randomBytes(8).toString("hex");
+function gerarToken(bytes = 32): string {
+  return crypto.randomBytes(bytes).toString("hex");
 }
 
-export async function obterNonce(_req: Request, res: Response) {
-  const nonce = gerarNonce();
-  nonces.set(nonce, Date.now());
-  res.json({ nonce });
-}
+function obterCookie(req: Request, nome: string): string | null {
+  const header = req.headers.cookie;
 
-function initFirebaseAdminIfNeeded() {
-  if (admin.apps.length > 0) return;
-  const key = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-  if (key) {
-    try {
-      const parsed = JSON.parse(key);
-      admin.initializeApp({ credential: admin.credential.cert(parsed) });
-      return;
-    } catch (e) {
-      console.warn("FIREBASE_SERVICE_ACCOUNT_KEY provided but invalid JSON.");
+  if (!header) {
+    return null;
+  }
+
+  const cookies = header.split(";");
+
+  for (const cookie of cookies) {
+    const [chave, ...resto] = cookie.trim().split("=");
+
+    if (chave === nome) {
+      return decodeURIComponent(resto.join("="));
     }
   }
 
-  const path = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
-  if (path) {
-    admin.initializeApp({ credential: admin.credential.cert(path as any) });
-    return;
-  }
-
-  // If no service account available, admin features will throw later.
+  return null;
 }
 
-export async function verificarSiwe(req: Request, res: Response) {
+function opcoesCookie() {
+  const producao = process.env.NODE_ENV === "production";
+
+  return {
+    httpOnly: true,
+    secure: producao,
+    sameSite: "lax" as const,
+    maxAge: SESSION_TTL_MS,
+    path: "/"
+  };
+}
+
+function limparCookie(res: Response): void {
+  const opcoes = opcoesCookie();
+
+  res.clearCookie(COOKIE_NAME, {
+    httpOnly: opcoes.httpOnly,
+    secure: opcoes.secure,
+    sameSite: opcoes.sameSite,
+    path: opcoes.path
+  });
+}
+
+export async function obterNonce(
+  _req: Request,
+  res: Response
+): Promise<void> {
   try {
-    const { message, signature } = req.body as { message?: string; signature?: string };
+    await limparNoncesExpirados();
+
+    const nonce = gerarToken(16);
+    const expiresAt = new Date(Date.now() + NONCE_TTL_MS);
+
+    await guardarNonce(nonce, expiresAt);
+
+    res.setHeader("Cache-Control", "no-store");
+
+    res.json({
+      nonce,
+      expiresIn: NONCE_TTL_MS
+    });
+  } catch (erro) {
+    console.error("Erro ao gerar nonce SIWE:", erro);
+
+    res.status(503).json({
+      codigo: "BANCO_INDISPONIVEL",
+      mensagem:
+        "Não foi possível iniciar a autenticação neste momento."
+    });
+  }
+}
+
+export async function verificarSiwe(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const { message, signature } = req.body as {
+      message?: string;
+      signature?: string;
+    };
+
     if (!message || !signature) {
-      res.status(400).json({ codigo: "INVALIDO", mensagem: "Mensagem ou assinatura em falta." });
+      res.status(400).json({
+        codigo: "INVALIDO",
+        mensagem: "Mensagem ou assinatura em falta."
+      });
       return;
     }
 
-    // check nonce within message
-    const match = message.match(/Nonce:\s*([0-9a-fA-F]+)/i);
-    const nonce = match ? match[1] : null;
-    if (!nonce || !nonces.has(nonce)) {
-      res.status(400).json({ codigo: "INVALID_NONCE", mensagem: "Nonce inválido ou expirado." });
+    const nonceMatch = message.match(/^Nonce:\s*([0-9a-f]+)$/im);
+    const nonce = nonceMatch?.[1] ?? null;
+
+    if (!nonce) {
+      res.status(400).json({
+        codigo: "INVALID_NONCE",
+        mensagem: "Nonce ausente na mensagem."
+      });
       return;
     }
 
-    // remove nonce to avoid replay
-    nonces.delete(nonce);
+    const addressMatch = message.match(
+      /Ethereum account:\s*\n(0x[a-fA-F0-9]{40})/i
+    );
 
-    // recover address
-    let recovered: string;
+    if (!addressMatch?.[1]) {
+      res.status(400).json({
+        codigo: "INVALID_MESSAGE",
+        mensagem: "Endereço da wallet ausente na mensagem."
+      });
+      return;
+    }
+
+    const enderecoDeclarado = addressMatch[1];
+
+    let enderecoRecuperado: string;
+
     try {
-      recovered = ethers.verifyMessage(message, signature);
-    } catch (e) {
-      res.status(400).json({ codigo: "INVALID_SIGNATURE", mensagem: "Assinatura inválida." });
+      enderecoRecuperado = ethers.verifyMessage(message, signature);
+    } catch {
+      res.status(400).json({
+        codigo: "INVALID_SIGNATURE",
+        mensagem: "Assinatura inválida."
+      });
       return;
     }
 
-    const uid = recovered.toLowerCase();
-
-    // initialize admin if possible
-    initFirebaseAdminIfNeeded();
-
-    if (!admin.apps.length) {
-      // no admin available: return basic success (frontend can continue but can't mint custom token)
-      res.json({ uid, mensagem: "Autenticado (sem token server)." });
+    if (
+      enderecoRecuperado.toLowerCase() !==
+      enderecoDeclarado.toLowerCase()
+    ) {
+      res.status(400).json({
+        codigo: "WALLET_MISMATCH",
+        mensagem: "A assinatura não corresponde à wallet indicada."
+      });
       return;
     }
 
-    // create or get user and mint custom token
-    try {
-      const customToken = await admin.auth().createCustomToken(uid);
-      res.json({ uid, token: customToken });
-    } catch (e) {
-      console.error(e);
-      res.status(500).json({ codigo: "ADMIN_ERROR", mensagem: "Erro ao criar token de autenticação." });
+    const nonceValido = await consumirNonce(nonce);
+
+    if (!nonceValido) {
+      res.status(400).json({
+        codigo: "INVALID_NONCE",
+        mensagem: "Nonce inválido, expirado ou já utilizado."
+      });
+      return;
     }
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ codigo: "ERRO", mensagem: "Erro interno." });
+
+    const wallet = ethers.getAddress(enderecoRecuperado).toLowerCase();
+
+    const walletPersistida = await obterOuCriarWallet(wallet);
+
+    const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+    const token = gerarToken(32);
+    const tokenHash = gerarHashToken(token);
+
+    await criarSessao(
+      walletPersistida.id,
+      tokenHash,
+      expiresAt
+    );
+
+    res.cookie(
+      COOKIE_NAME,
+      token,
+      opcoesCookie()
+    );
+
+    console.log(
+      `[SIWE] Sessão criada para ${wallet}. Cookie enviado: ${COOKIE_NAME}`
+    );
+
+    res.setHeader("Cache-Control", "no-store");
+
+    res.json({
+      autenticado: true,
+      wallet,
+      expiresAt: expiresAt.toISOString()
+    });
+  } catch (erro) {
+    console.error("Erro SIWE:", erro);
+
+    res.status(503).json({
+      codigo: "BANCO_INDISPONIVEL",
+      mensagem:
+        "Não foi possível concluir a autenticação neste momento."
+    });
+  }
+}
+
+export async function obterSessao(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    await limparSessoesExpiradas();
+
+    const token = obterCookie(req, COOKIE_NAME);
+
+    console.log(
+      `[SIWE] /session → cookie recebido: ${token ? "SIM" : "NÃO"}`
+    );
+
+    if (!token) {
+      res.status(401).json({
+        autenticado: false
+      });
+      return;
+    }
+
+    const tokenHash = gerarHashToken(token);
+    const sessao = await obterSessaoPorToken(tokenHash);
+
+    if (!sessao) {
+      limparCookie(res);
+
+      res.status(401).json({
+        autenticado: false
+      });
+      return;
+    }
+
+    res.setHeader("Cache-Control", "no-store");
+
+    res.json({
+      autenticado: true,
+      wallet: sessao.wallet,
+      expiresAt: sessao.expiresAt.toISOString()
+    });
+  } catch (erro) {
+    console.error("Erro ao obter sessão:", erro);
+
+    res.status(503).json({
+      codigo: "BANCO_INDISPONIVEL",
+      mensagem:
+        "Não foi possível verificar a sessão neste momento."
+    });
+  }
+}
+
+export async function terminarSessao(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const token = obterCookie(req, COOKIE_NAME);
+
+    if (token) {
+      const tokenHash = gerarHashToken(token);
+      await revogarSessao(tokenHash);
+    }
+
+    limparCookie(res);
+
+    res.setHeader("Cache-Control", "no-store");
+
+    res.json({
+      autenticado: false
+    });
+  } catch (erro) {
+    console.error("Erro ao terminar sessão:", erro);
+
+    limparCookie(res);
+
+    res.status(503).json({
+      codigo: "BANCO_INDISPONIVEL",
+      mensagem:
+        "Não foi possível terminar a sessão neste momento."
+    });
   }
 }

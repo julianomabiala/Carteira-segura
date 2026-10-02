@@ -1,6 +1,10 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
-import { criarAnalise } from "../controladores/controladorAnalise.js";
+import {
+  criarAnalise,
+  criarAnaliseContrato
+} from "../controladores/controladorAnalise.js";
+import { exigirSessao } from "../middleware/autenticacaoSessao.js";
 
 export const rotasAnalise = Router();
 
@@ -11,8 +15,21 @@ const limiteAnalise = rateLimit({
   legacyHeaders: false,
   message: {
     codigo: "MUITOS_PEDIDOS",
-    mensagem: "Foram feitos muitos pedidos. Aguarde um momento e tente novamente."
+    mensagem:
+      "Foram feitos muitos pedidos. Aguarde um momento e tente novamente."
   }
 });
 
-rotasAnalise.post("/scan", limiteAnalise, criarAnalise);
+rotasAnalise.post(
+  "/scan",
+  limiteAnalise,
+  exigirSessao,
+  criarAnalise
+);
+
+rotasAnalise.post(
+  "/contract-scan",
+  limiteAnalise,
+  exigirSessao,
+  criarAnaliseContrato
+);

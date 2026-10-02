@@ -12,7 +12,10 @@ describe("validacao da analise", () => {
   });
 
   it("aceita apenas redes suportadas", () => {
+    expect(redeValida("ethereum")).toBe(true);
+    expect(redeValida("bnb")).toBe(true);
     expect(redeValida("polygon")).toBe(true);
+    expect(redeValida("arbitrum")).toBe(true);
     expect(redeValida("bitcoin")).toBe(false);
   });
 });

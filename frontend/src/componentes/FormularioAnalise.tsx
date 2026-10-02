@@ -7,6 +7,10 @@ type Propriedades = {
   endereco: string;
   rede: RedeSuportada;
   carregando: boolean;
+  redeDaWallet: string | null;
+  chainIdCarteira?: number;
+  providerCarteira?: string;
+  erroRede: string;
   carteiraConectada?: string;
   aoAlterarEndereco: (valor: string) => void;
   aoAlterarRede: (valor: RedeSuportada) => void;
@@ -18,6 +22,10 @@ export function FormularioAnalise({
   endereco,
   rede,
   carregando,
+  redeDaWallet,
+  chainIdCarteira,
+  providerCarteira,
+  erroRede,
   carteiraConectada,
   aoAlterarEndereco,
   aoAlterarRede,
@@ -78,6 +86,29 @@ export function FormularioAnalise({
         </div>
       </div>
 
+      <div
+        className={[
+          "grid gap-2 rounded-xl border px-4 py-3 text-sm sm:grid-cols-3",
+          erroRede
+            ? "border-amber-200 bg-amber-50 text-amber-950"
+            : "border-slate-200 bg-slate-50 text-slate-700"
+        ].join(" ")}
+        role={erroRede ? "alert" : "status"}
+      >
+        <span>
+          Wallet: <strong>{redeDaWallet ?? "Rede não suportada"}</strong>
+        </span>
+        <span>
+          Chain ID: <strong>{chainIdCarteira ?? "—"}</strong>
+        </span>
+        <span>
+          Provider: <strong>{providerCarteira ?? "não identificado"}</strong>
+        </span>
+        {erroRede ? (
+          <span className="font-semibold sm:col-span-3">{erroRede}</span>
+        ) : null}
+      </div>
+
       {carteiraConectada ? (
         <button
           type="button"
@@ -91,7 +122,7 @@ export function FormularioAnalise({
 
       <button
         type="submit"
-        disabled={carregando}
+        disabled={carregando || Boolean(erroRede)}
         className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-300 disabled:cursor-not-allowed disabled:bg-slate-400"
       >
         {carregando ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : <Search className="h-5 w-5" aria-hidden />}

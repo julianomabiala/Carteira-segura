@@ -1,28 +1,40 @@
-import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
-import { createAppKit } from "@reown/appkit/react";
-import { arbitrum, bsc, mainnet, polygon } from "@reown/appkit/networks";
-import { createConfig, http } from "wagmi";
-import type { AppKitNetwork } from "@reown/appkit/networks";
+import {
+  arbitrum,
+  bsc,
+  mainnet,
+  polygon
+} from "@reown/appkit/networks";
+import {
+  createAppKit
+} from "@reown/appkit/react";
+import {
+  WagmiAdapter
+} from "@reown/appkit-adapter-wagmi";
 import type { RedeSuportada } from "../tipos/analise";
+import {
+  nomeRede as obterNomeRede,
+  redePorChainId as mapearRedePorChainId
+} from "../servicos/redes";
+import {
+  http
+} from "wagmi";
+import type { Config as WagmiConfig } from "wagmi";
 
-// Array mutável exigido pelo AppKit 1.7.8
-export const redesWallet: [AppKitNetwork, ...AppKitNetwork[]] = [
+export const projectId =
+  import.meta.env.VITE_REOWN_PROJECT_ID ??
+  "00000000000000000000000000000000";
+
+export const redesWallet = [
   mainnet,
   bsc,
   polygon,
   arbitrum
-];
+] as [typeof mainnet, typeof bsc, typeof polygon, typeof arbitrum];
 
-// Tuple exigida pelo Wagmi
-const chains = [
-  mainnet,
-  bsc,
-  polygon,
-  arbitrum
-] as const;
-
-export const wagmiConfig = createConfig({
-  chains,
+export const wagmiAdapter = new WagmiAdapter({
+  ssr: false,
+  projectId,
+  networks: redesWallet,
   transports: {
     [mainnet.id]: http(),
     [bsc.id]: http(),
@@ -31,39 +43,34 @@ export const wagmiConfig = createConfig({
   }
 });
 
-const projectId = String(import.meta.env.VITE_REOWN_PROJECT_ID ?? "");
+export const appKit = createAppKit({
+  adapters: [wagmiAdapter],
+  projectId,
+  networks: redesWallet,
+  defaultNetwork: mainnet,
+  metadata: {
+    name: "Carteira Segura",
+    description:
+      "Análise de risco de carteiras blockchain com NZOChain",
+    url: window.location.origin,
+    icons: []
+  },
+  features: {
+    analytics: false
+  }
+});
 
-if (projectId) {
-  const wagmiAdapter = new WagmiAdapter({
-    projectId,
-    networks: redesWallet
-  });
-
-  createAppKit({
-    adapters: [wagmiAdapter],
-    projectId,
-    networks: redesWallet,
-    metadata: {
-      name: "Carteira Segura",
-      description: "NZOChain Wallet Risk Scanner",
-      url: "http://localhost:5173",
-      icons: ["https://avatars.githubusercontent.com/u/0?v=4"]
-    },
-    features: {
-      analytics: false,
-      email: false,
-      socials: false
-    }
-  });
-}
+export const config = wagmiAdapter.wagmiConfig as unknown as WagmiConfig;
+export const wagmiConfig = config;
 
 export function redePorChainId(
-  chainId?: number | null
+  chainId: number | undefined
 ): RedeSuportada | null {
-  if (chainId === mainnet.id) return "ethereum";
-  if (chainId === bsc.id) return "bnb";
-  if (chainId === polygon.id) return "polygon";
-  if (chainId === arbitrum.id) return "arbitrum";
+  return mapearRedePorChainId(chainId);
+}
 
-  return null;
+export function nomeRede(
+  rede: RedeSuportada
+): string {
+  return obterNomeRede(rede);
 }

@@ -1,37 +1,100 @@
-import type { PedidoAnalise, ResultadoAnalise } from "../tipos/analise";
+import type {
+  PedidoAnalise,
+  PedidoAnaliseContrato,
+  RespostaAnalise,
+  RespostaAnaliseContrato
+} from "../tipos/analise";
+import type {
+  MetadadosAnalise,
+  RespostaPedidoAnalise
+} from "../experimento/tipos";
 
 const API_URL = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
-const URL_SCAN = API_URL ? `${API_URL}/api/scan` : "/api/scan";
 
-export async function pedirAnalise(
-  pedido: PedidoAnalise,
-  idToken?: string
-): Promise<ResultadoAnalise> {
+const URL_SCAN = API_URL ? `${API_URL}/api/scan` : "/api/scan";
+const URL_CONTRACT_SCAN = API_URL
+  ? `${API_URL}/api/contract-scan`
+  : "/api/contract-scan";
+
+async function fazerPedido(
+  url: string,
+  corpo: unknown
+): Promise<RespostaPedidoAnalise> {
+  const requestedAt = new Date().toISOString();
+
   let resposta: Response;
 
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
-
   try {
-    resposta = await fetch(URL_SCAN, {
+    resposta = await fetch(url, {
       method: "POST",
-      headers,
-      body: JSON.stringify(pedido)
+      headers: {
+        "Content-Type": "application/json"
+      },
+      credentials: "include",
+      body: JSON.stringify(corpo)
     });
   } catch {
     throw new Error(
-      "Nao foi possivel contactar o servico. Verifique a sua ligacao e tente novamente."
+      "Não foi possível contactar o serviço. Verifique a sua ligação e tente novamente."
     );
   }
 
-  const corpo = await resposta.json().catch(() => null);
+  const completedAt = new Date().toISOString();
+  const resultado = await resposta.json().catch(() => null);
+
+  const metadados: MetadadosAnalise = {
+    analysisId:
+      resposta.headers.get("X-Analysis-Id") ??
+      resposta.headers.get("x-analysis-id"),
+    endpoint: url,
+    httpStatus: resposta.status,
+    requestedAt,
+    completedAt
+  };
 
   if (!resposta.ok) {
     throw new Error(
-      corpo?.mensagem ??
-        "Nao foi possivel concluir a analise neste momento. Tente novamente."
+      resultado?.mensagem ??
+        "Não foi possível concluir a análise neste momento. Tente novamente."
     );
   }
 
-  return corpo as ResultadoAnalise;
+  return {
+    dados: resultado,
+    metadados
+  };
+}
+
+export async function pedirAnalise(
+  pedido: PedidoAnalise
+): Promise<RespostaAnalise> {
+  const resultado = await fazerPedido(URL_SCAN, pedido);
+
+  return {
+    ...(resultado.dados as RespostaAnalise),
+    detalhesTecnicos: {
+      ...((resultado.dados as RespostaAnalise).detalhesTecnicos ?? {}),
+      __metadadosApi: resultado.metadados
+    }
+  };
+}
+
+export async function pedirAnaliseContrato(
+  pedido: PedidoAnaliseContrato
+): Promise<RespostaAnaliseContrato> {
+  const resultado = await fazerPedido(
+    URL_CONTRACT_SCAN,
+    pedido
+  );
+
+  return {
+    ...(resultado.dados as RespostaAnaliseContrato),
+    detalhesTecnicos: {
+      ...(
+        (resultado.dados as RespostaAnaliseContrato)
+          .detalhesTecnicos ?? {}
+      ),
+      __metadadosApi: resultado.metadados
+    }
+  };
 }

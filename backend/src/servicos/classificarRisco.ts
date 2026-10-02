@@ -1,146 +1,281 @@
-import type { ClassificacaoRisco, NivelRisco, Razao } from "../tipos/analise.js";
+import type {
+  ClassificacaoRisco,
+  NivelRisco
+} from "../tipos/analise.js";
 
-type DadosSoltos = Record<string, unknown>;
+type DadosRisco = {
+  riskScore?: unknown;
+  riskLevel?: unknown;
+  decision?: unknown;
+  reasons?: unknown;
+  malicious?: unknown;
+};
 
-function objeto(valor: unknown): DadosSoltos {
-  return valor && typeof valor === "object" && !Array.isArray(valor) ? (valor as DadosSoltos) : {};
-}
-
-function procurarValor(dados: unknown, nomes: string[]): unknown {
-  const raiz = objeto(dados);
-  const pilha: DadosSoltos[] = [raiz];
-
-  while (pilha.length > 0) {
-    const atual = pilha.pop() ?? {};
-    for (const nome of nomes) {
-      if (nome in atual) return atual[nome];
-    }
-
-    for (const valor of Object.values(atual)) {
-      if (valor && typeof valor === "object" && !Array.isArray(valor)) {
-        pilha.push(valor as DadosSoltos);
-      }
-    }
+function extrairDados(resposta: unknown): DadosRisco {
+  if (!resposta || typeof resposta !== "object") {
+    return {};
   }
 
-  return undefined;
-}
+  const raiz = resposta as Record<string, unknown>;
 
-function obterRiskScore(dados: unknown): number | null {
-  const valor = procurarValor(dados, ["risk_score", "riskScore", "score", "risk", "value", "pontuacao"]);
-  const numero = typeof valor === "number" ? valor : typeof valor === "string" ? Number(valor) : Number.NaN;
-  return Number.isFinite(numero) ? numero : null;
-}
+  const data =
+    raiz.data && typeof raiz.data === "object"
+      ? (raiz.data as Record<string, unknown>)
+      : raiz;
 
-function obterStatus(dados: unknown): string {
-  const valor = procurarValor(dados, ["status", "risk_level", "riskLevel", "level", "severity"]);
-  return typeof valor === "string" ? valor.toLowerCase() : "";
-}
+  return {
+    riskScore:
+      data.riskScore ??
+      data.risk_score,
 
-function extrairAlertas(dados: unknown): string[] {
-  const warnings = procurarValor(dados, ["warnings", "alerts", "flags", "sinais"]);
-  if (Array.isArray(warnings)) {
-    return warnings.filter((w): w is string => typeof w === "string");
-  }
-  return [];
-}
+    riskLevel:
+      data.riskLevel ??
+      data.risk_level,
 
-function verificarMalicioso(dados: unknown): boolean {
-  const malicioso = procurarValor(dados, ["malicious", "isMalicious"]);
-  const blacklisted = procurarValor(dados, ["blacklisted"]);
-  const sanctioned = procurarValor(dados, ["sanctioned"]);
-  return malicioso === true || blacklisted === true || sanctioned === true;
-}
+    decision: data.decision,
 
-export function classificarRisco(dados: unknown): ClassificacaoRisco {
-  const riskScore = obterRiskScore(dados);
-  const status = obterStatus(dados);
-  const alertas = extrairAlertas(dados);
-  const emalicioso = verificarMalicioso(dados);
+    reasons: data.reasons,
 
-  const razoes: Razao[] = [];
-  let nivel: NivelRisco = "baixo";
-
-  // Verificar indicadores de risco
-  if (emalicioso) {
-    nivel = "alto";
-    razoes.push({
-      titulo: "Carteira listada como perigosa",
-      descricao: "Este endereço foi identificado por serviços de segurança como potencialmente malicioso ou bloqueado."
-    });
-  }
-
-  if (riskScore !== null) {
-    if (riskScore >= 60) {
-      nivel = "alto";
-      razoes.push({
-        titulo: "Sinais preocupantes na atividade",
-        descricao: "A atividade observada nesta carteira sugere comportamentos atípicos que recomendam precaução."
-      });
-    } else if (riskScore >= 30) {
-      nivel = "atencao";
-      razoes.push({
-        titulo: "Indicadores moderados de risco",
-        descricao: "Os dados apontam para sinais que merecem atenção e validação adicional."
-      });
-    }
-  }
-
-  if (alertas.length > 0 && riskScore !== null && riskScore >= 30 && riskScore < 60) {
-    nivel = "atencao";
-    razoes.push({
-      titulo: "Foram encontrados sinais de alerta",
-      descricao: "Foram detectadas atividades atípicas. Exemplos: " + alertas.slice(0, 2).join(", ") + (alertas.length > 2 ? ", e mais..." : "")
-    });
-  }
-
-  if (status.includes("medium") || status.includes("moderate") || status.includes("warning") || status.includes("attention")) {
-    nivel = "atencao";
-    if (!razoes.some((r) => r.titulo.includes("atenção") || r.titulo.includes("risco") || r.titulo.includes("alerta"))) {
-      razoes.push({
-        titulo: "Análise externa indica atenção",
-        descricao: "Classificações externas sugerem que esta carteira merece verificação adicional."
-      });
-    }
-  }
-
-  if (status.includes("high") || status.includes("critical") || status.includes("unsafe")) {
-    nivel = "alto";
-    if (!razoes.some((r) => r.titulo.includes("perigosa"))) {
-      razoes.push({
-        titulo: "Análise externa indica risco",
-        descricao: "Classificações externas apontam para um maior nível de atenção nesta carteira."
-      });
-    }
-  }
-
-  // Se nenhum risco foi encontrado
-  if (razoes.length === 0) {
-    razoes.push({
-      titulo: "Nenhum sinal de perigo encontrado",
-      descricao: "Com base nos dados disponíveis, não foram encontrados indícios que justifiquem precaução extra."
-    });
-  }
-
-  const mensagens = {
-    baixo: {
-      titulo: "Baixo risco",
-      explicacao: "Esta carteira aparenta não apresentar sinais de perigo."
-    },
-    atencao: {
-      titulo: "Atenção",
-      explicacao: "Foram identificados sinais moderados que merecem verificação adicional antes de interagir."
-    },
-    alto: {
-      titulo: "Alto risco",
-      explicacao: "Foram encontrados sinais que sugerem risco. Evite interagir sem verificação adicional."
-    }
+    malicious: data.malicious
   };
+}
+
+function extrairScore(valor: unknown): number | null {
+  if (typeof valor === "number" && Number.isFinite(valor)) {
+    return Math.max(0, Math.min(100, valor));
+  }
+
+  if (typeof valor === "string" && valor.trim() !== "") {
+    const score = Number(valor);
+
+    if (Number.isFinite(score)) {
+      return Math.max(0, Math.min(100, score));
+    }
+  }
+
+  return null;
+}
+
+function normalizarNivel(valor: unknown): NivelRisco | null {
+  if (typeof valor !== "string") {
+    return null;
+  }
+
+  const nivel = valor.trim().toLowerCase();
+
+  switch (nivel) {
+    case "safe":
+    case "low":
+    case "baixo":
+      return "baixo";
+
+    case "warning":
+    case "medium":
+    case "moderate":
+    case "attention":
+    case "atencao":
+    case "atenção":
+      return "atencao";
+
+    case "high":
+    case "alto":
+      return "alto";
+
+    case "critical":
+    case "critico":
+    case "crítico":
+      return "critico";
+
+    case "inconclusive":
+    case "inconclusivo":
+      return "inconclusivo";
+
+    default:
+      return null;
+  }
+}
+
+function classificarPorScore(score: number | null): NivelRisco {
+  if (score === null) {
+    return "inconclusivo";
+  }
+
+  if (score <= 30) {
+    return "baixo";
+  }
+
+  if (score <= 60) {
+    return "atencao";
+  }
+
+  if (score <= 85) {
+    return "alto";
+  }
+
+  return "critico";
+}
+
+function tituloPorNivel(nivel: NivelRisco): string {
+  switch (nivel) {
+    case "baixo":
+      return "Baixo risco";
+
+    case "atencao":
+      return "Atenção";
+
+    case "alto":
+      return "Alto risco";
+
+    case "critico":
+      return "Crítico";
+
+    default:
+      return "Análise inconclusiva";
+  }
+}
+
+function explicacaoPorNivel(nivel: NivelRisco): string {
+  switch (nivel) {
+    case "baixo":
+      return "Não foram identificados sinais relevantes de risco nos dados analisados.";
+
+    case "atencao":
+      return "Foram identificados sinais que justificam atenção adicional antes de interagir.";
+
+    case "alto":
+      return "Foram encontrados sinais que sugerem risco elevado. Evite interagir sem verificação adicional.";
+
+    case "critico":
+      return "Foram encontrados sinais críticos de risco. A interação deve ser tratada com máxima cautela e verificação adicional.";
+
+    default:
+      return "Não foi possível determinar um nível de risco confiável a partir dos dados recebidos.";
+  }
+}
+
+function normalizarRazoes(
+  reasons: unknown,
+  nivel: NivelRisco,
+  score: number | null,
+  malicious: boolean
+): ClassificacaoRisco["razoes"] {
+  if (Array.isArray(reasons) && reasons.length > 0) {
+    return reasons.map((razao) => ({
+      titulo: "Sinal recebido",
+      descricao:
+        typeof razao === "string"
+          ? razao
+          : JSON.stringify(razao)
+    }));
+  }
+
+  if (malicious) {
+    return [
+      {
+        titulo: "Indicador malicioso",
+        descricao:
+          "Os dados recebidos indicam a presença de atividade ou comportamento marcado como malicioso."
+      }
+    ];
+  }
+
+  if (nivel === "baixo" && score !== null) {
+    return [
+      {
+        titulo: "Score de risco baixo",
+        descricao:
+          "O score de risco recebido está dentro da faixa de 0 a 30, correspondente a baixo risco."
+      }
+    ];
+  }
+
+  if (nivel === "atencao" && score !== null) {
+    return [
+      {
+        titulo: "Score de risco moderado",
+        descricao:
+          "O score de risco recebido está dentro da faixa de 31 a 60, correspondente a atenção."
+      }
+    ];
+  }
+
+  if (nivel === "alto" && score !== null) {
+    return [
+      {
+        titulo: "Score de risco elevado",
+        descricao:
+          "O score de risco recebido está dentro da faixa de 61 a 85, correspondente a alto risco."
+      }
+    ];
+  }
+
+  if (nivel === "critico" && score !== null) {
+    return [
+      {
+        titulo: "Score de risco crítico",
+        descricao:
+          "O score de risco recebido está dentro da faixa de 86 a 100, correspondente a risco crítico."
+      }
+    ];
+  }
+
+  return [
+    {
+      titulo: "Análise inconclusiva",
+      descricao:
+        "A resposta recebida não contém dados de risco suficientes para determinar uma classificação."
+    }
+  ];
+}
+
+export function classificarRisco(
+  resposta: unknown
+): ClassificacaoRisco {
+  const dados = extrairDados(resposta);
+
+  const score = extrairScore(dados.riskScore);
+  const nivelRecebido = normalizarNivel(dados.riskLevel);
+
+  const malicious =
+    dados.malicious === true ||
+    (
+      typeof dados.malicious === "string" &&
+      dados.malicious.toLowerCase() === "true"
+    );
+
+  /*
+   * A NZOChain é a fonte primária quando fornece riskLevel.
+   *
+   * O Risk Score continua preservado separadamente.
+   * A decision (ALLOW/BLOCK) também permanece separada.
+   *
+   * Portanto:
+   *
+   * riskScore = 30
+   * riskLevel = SAFE
+   * decision = BLOCK
+   *
+   * não deve ser transformado silenciosamente em outra decisão.
+   */
+  let nivel: NivelRisco;
+
+  if (malicious) {
+    nivel = "alto";
+  } else if (nivelRecebido && nivelRecebido !== "inconclusivo") {
+    nivel = nivelRecebido;
+  } else {
+    nivel = classificarPorScore(score);
+  }
 
   return {
     nivel,
-    titulo: mensagens[nivel].titulo,
-    explicacao: mensagens[nivel].explicacao,
-    razoes
+    titulo: tituloPorNivel(nivel),
+    explicacao: explicacaoPorNivel(nivel),
+    razoes: normalizarRazoes(
+      dados.reasons,
+      nivel,
+      score,
+      malicious
+    )
   };
 }

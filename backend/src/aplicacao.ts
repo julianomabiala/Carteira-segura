@@ -2,17 +2,28 @@ import cors from "cors";
 import express from "express";
 import helmet from "helmet";
 import { rotasAnalise } from "./rotas/rotasAnalise.js";
+import { rotasExperimentos } from "./rotas/rotasExperimentos.js";
 import { rotasAuth } from "./rotas/rotasAuth.js";
 
 export function criarApp() {
   const app = express();
-  const origensPermitidas = (process.env.CORS_ORIGIN ?? "http://localhost:5173")
+
+  const origensPermitidas = (
+    process.env.CORS_ORIGIN ?? "http://localhost:5173"
+  )
     .split(",")
     .map((origem) => origem.trim())
     .filter(Boolean);
 
   app.use(helmet());
-  app.use(cors({ origin: origensPermitidas }));
+
+  app.use(
+    cors({
+      origin: origensPermitidas,
+      credentials: true
+    })
+  );
+
   app.use(express.json({ limit: "12kb" }));
 
   app.get("/api/health", (_req, res) => {
@@ -22,9 +33,13 @@ export function criarApp() {
   app.use("/api", rotasAuth);
 
   app.use("/api", rotasAnalise);
+  app.use("/api", rotasExperimentos);
 
   app.use((_req, res) => {
-    res.status(404).json({ codigo: "NAO_ENCONTRADO", mensagem: "Rota não encontrada." });
+    res.status(404).json({
+      codigo: "NAO_ENCONTRADO",
+      mensagem: "Rota não encontrada."
+    });
   });
 
   return app;
